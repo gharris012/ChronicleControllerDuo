@@ -1,7 +1,5 @@
- blynk
- Adafruit_GFX
  Adafruit_MCP23017
  Adafruit_SSD1306
  OneWire
- pid
- HttpClient
+https://github.com/nmattisson/httpclient HttpClient
+ blynk
