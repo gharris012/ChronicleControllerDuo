@@ -36,6 +36,7 @@ typedef struct DSTempSensor
 {
     char name[10];
     uint8_t addr[8];
+
     uint8_t blynkPin;
 
     float tempF;
@@ -44,6 +45,29 @@ typedef struct DSTempSensor
     int last_valid_read;
     bool present;
 } DSTempSensor;
+
+typedef struct Tilt
+{
+    char name[10];
+    uint8_t color_id;
+    uint8_t blynkPin;
+
+    float tempF;
+    int gravity; // 1010 -> 1.010
+
+    int temperature_calibration_start;
+    int temperature_calibration_end;
+    int temperature_calibration[71];
+
+    int gravity_calibration_start;
+    int gravity_calibration_end;
+    int gravity_calibration[71];
+
+    float last_tempF;
+    float last_gravity;
+    int last_valid_read;
+    bool present;
+} Tilt;
 
 typedef struct Thermistor
 {
@@ -148,6 +172,7 @@ typedef struct Fermenter
 {
     char name[10];
     TemperatureControl *control;
+    Tilt *tilt;
 } Fermenter;
 
 float readTempC(DSTempSensor *dstemp);
