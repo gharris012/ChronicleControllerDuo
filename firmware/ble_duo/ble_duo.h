@@ -23,24 +23,9 @@
 #define BLE_SCAN_INTERVAL    0x0060 // 60 ms
 #define BLE_SCAN_WINDOW      0x0030 // 30 ms
 
-/******************************************************
- *                      Type Define
- ******************************************************/
-typedef struct {
-  uint16_t  connected_handle;
-  uint8_t   addr_type;
-  bd_addr_t addr;
-  struct {
-    gatt_client_service_t service;
-    struct {
-      gatt_client_characteristic_t chars;
-      gatt_client_characteristic_descriptor_t descriptor[2]; // User_descriptor and client charactersitc configuration descriptor.
-    } chars[2];
-  } service; // Service contains two characteristics and each characteristic contains two descriptors.
-} Device_t;
+typedef void (*ble_report_callback_t) (short, short, short);
 
-uint32_t ble_advdata_decode(uint8_t type, uint8_t advdata_len, uint8_t *p_advdata, uint8_t *len, uint8_t *p_field_data);
 void reportCallback(advertisementReport_t *report);
-void ble_scanner_setup();
+void ble_scanner_setup(ble_report_callback_t callback, Logger *logger);
 
 #endif

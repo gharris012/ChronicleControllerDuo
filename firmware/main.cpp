@@ -1,4 +1,5 @@
 // == [ includes ] ==
+#include "Particle.h"
 #include "config.h"
 #include "keys.h"
 //#define BLYNK_PRINT Serial
@@ -31,21 +32,23 @@ SerialLogHandler logHandler(LOG_LEVEL_WARN, {
     { "app", LOG_LEVEL_INFO },
     { "app.control.chiller", LOG_LEVEL_TRACE },
     { "app.control.actuator", LOG_LEVEL_TRACE },
-    { "app.control.pid", LOG_LEVEL_TRACE }
+    { "app.control.pid", LOG_LEVEL_TRACE },
+    { "app.ble", LOG_LEVEL_INFO },
+    { "app.sensor.tilt", LOG_LEVEL_INFO }
 });
 
 Logger LogChiller("app.control.chiller");
 Logger LogActuator("app.control.actuator");
 Logger LogPID("app.control.pid");
+Logger LogBle("app.ble");
+Logger LogTilt("app.sensor.tilt");
 
 // == [ setup ] ==
 
 bool ds_temp_sensor_is_converting = FALSE;
 unsigned long int ds_temp_sensor_convert_complete_time = 0;
 const byte DS_TEMP_SENSOR_CONVERT_DURATION = 250;
-const unsigned long int DS_TEMP_GRACE_PERIOD = 60000; // if we haven't gotten a valid temp in this amount of time, mark it as disconnected
-const float INVALID_TEMPERATURE = -123;
-const int INVALID_GRAVITY = -123;
+const unsigned int DS_TEMP_GRACE_PERIOD = 60000; // if we haven't gotten a valid temp in this amount of time, mark it as disconnected
 const byte DS_SENSOR_COUNT = 4;
 const byte DS_FERMENTER_1 = 0;
 const byte DS_FERMENTER_2 = 1;
@@ -78,107 +81,57 @@ DSTempSensor ds_temp_sensor[DS_SENSOR_COUNT] = {
     }
 };
 
-Tilt tilt_orange = {
-        "Orange", 0x50, 0, INVALID_TEMPERATURE, INVALID_GRAVITY,
-
-        // === Gravity Calibration ===
-        1000 , // start
-        1070 , // end
-        // int table[ 70 ];
-        {
-         // [1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009]
-             1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011,
-         // [1010, 1011, 1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019]
-             1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019, 1020, 1021,
-         // [1020, 1021, 1022, 1023, 1024, 1025, 1026, 1027, 1028, 1029]
-             1022, 1023, 1024, 1025, 1026, 1027, 1028, 1030, 1031, 1032,
-         // [1030, 1031, 1032, 1033, 1034, 1035, 1036, 1037, 1038, 1039]
-             1033, 1034, 1035, 1036, 1037, 1038, 1039, 1040, 1041, 1042,
-         // [1040, 1041, 1042, 1043, 1044, 1045, 1046, 1047, 1048, 1049]
-             1043, 1044, 1045, 1046, 1047, 1048, 1049, 1050, 1051, 1052,
-         // [1050, 1051, 1052, 1053, 1054, 1055, 1056, 1057, 1058, 1059]
-             1053, 1054, 1055, 1056, 1057, 1058, 1060, 1061, 1062, 1063,
-         // [1060, 1061, 1062, 1063, 1064, 1065, 1066, 1067, 1068, 1069]
-             1064, 1065, 1066, 1067, 1068, 1069, 1070, 1071, 1072, 1073,
-         // [1070]
-             1074
-        },
-
-        // === Temperature Calibration ===
-        350 , // start
-        700 , // end
-        // int table[ 70 ];
-        {
-         // [350, 355, 360, 365, 370, 375, 380, 385, 390, 395]
-             365, 370, 375, 380, 385, 390, 395, 400, 405, 410,
-         // [400, 405, 410, 415, 420, 425, 430, 435, 440, 445]
-             415, 420, 425, 430, 435, 440, 445, 450, 455, 460,
-         // [450, 455, 460, 465, 470, 475, 480, 485, 490, 495]
-             465, 470, 475, 480, 485, 490, 495, 500, 505, 510,
-         // [500, 505, 510, 515, 520, 525, 530, 535, 540, 545]
-             515, 520, 525, 530, 535, 540, 545, 550, 555, 560,
-         // [550, 555, 560, 565, 570, 575, 580, 585, 590, 595]
-             565, 570, 575, 580, 585, 590, 595, 600, 605, 610,
-         // [600, 605, 610, 615, 620, 625, 630, 635, 640, 645]
-             615, 620, 625, 630, 635, 640, 645, 650, 655, 660,
-         // [650, 655, 660, 665, 670, 675, 680, 685, 690, 695]
-             665, 670, 675, 680, 685, 690, 695, 700, 705, 710,
-         // [700]
-             715
-        },
-
-        INVALID_TEMPERATURE, INVALID_GRAVITY, 0, FALSE
+// ===  PURPLE TILT ===
+// temperature strategy:  CALIBRATION_STRATEGY_OFFSET
+// gravity strategy:  CALIBRATION_STRATEGY_TABLE
+Tilt tilt_purple = { "purple", 0x40, 23, CALIBRATION_STRATEGY_OFFSET, CALIBRATION_STRATEGY_TABLE }; // name, color, blynk, temp, gravity
+unsigned short tilt_purple_gravity_calibration_table[101] = {
+ // [1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009]
+     1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011,
+ // [1010, 1011, 1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019]
+     1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019, 1020, 1021,
+ // [1020, 1021, 1022, 1023, 1024, 1025, 1026, 1027, 1028, 1029]
+     1022, 1023, 1024, 1025, 1026, 1027, 1028, 1030, 1031, 1032,
+ // [1030, 1031, 1032, 1033, 1034, 1035, 1036, 1037, 1038, 1039]
+     1033, 1034, 1035, 1036, 1037, 1038, 1039, 1040, 1041, 1042,
+ // [1040, 1041, 1042, 1043, 1044, 1045, 1046, 1047, 1048, 1049]
+     1043, 1044, 1045, 1046, 1047, 1048, 1049, 1050, 1051, 1052,
+ // [1050, 1051, 1052, 1053, 1054, 1055, 1056, 1057, 1058, 1059]
+     1053, 1054, 1055, 1056, 1057, 1058, 1060, 1061, 1062, 1063,
+ // [1060, 1061, 1062, 1063, 1064, 1065, 1066, 1067, 1068, 1069]
+     1064, 1065, 1066, 1067, 1068, 1069, 1070, 1071, 1072, 1073,
+ // [1070, 1071, 1072, 1073, 1074, 1075, 1076, 1077, 1078, 1079]
+     1074, 1075, 1076, 1077, 1078, 1079, 1080, 1081, 1082, 1083,
+ // [1080, 1081, 1082, 1083, 1084, 1085, 1086, 1087, 1088, 1089]
+     1084, 1085, 1086, 1087, 1088, 1089, 1091, 1092, 1093, 1094,
+ // [1090, 1091, 1092, 1093, 1094, 1095, 1096, 1097, 1098, 1099]
+     1095, 1096, 1097, 1098, 1099, 1100, 1101, 1102, 1103, 1104,
+ // [1100]
+     1105
 };
-Tilt tilt_purple =  {
-        "Purple", 0x64, 0, INVALID_TEMPERATURE, INVALID_GRAVITY,
 
-        // === Gravity Calibration ===
-        1000 , // start
-        1070 , // end
-        // int table[ 70 ];
-        {
-         // [1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009]
-             1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011,
-         // [1010, 1011, 1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019]
-             1012, 1013, 1014, 1015, 1016, 1017, 1018, 1019, 1020, 1021,
-         // [1020, 1021, 1022, 1023, 1024, 1025, 1026, 1027, 1028, 1029]
-             1022, 1023, 1024, 1025, 1026, 1027, 1028, 1030, 1031, 1032,
-         // [1030, 1031, 1032, 1033, 1034, 1035, 1036, 1037, 1038, 1039]
-             1033, 1034, 1035, 1036, 1037, 1038, 1039, 1040, 1041, 1042,
-         // [1040, 1041, 1042, 1043, 1044, 1045, 1046, 1047, 1048, 1049]
-             1043, 1044, 1045, 1046, 1047, 1048, 1049, 1050, 1051, 1052,
-         // [1050, 1051, 1052, 1053, 1054, 1055, 1056, 1057, 1058, 1059]
-             1053, 1054, 1055, 1056, 1057, 1058, 1060, 1061, 1062, 1063,
-         // [1060, 1061, 1062, 1063, 1064, 1065, 1066, 1067, 1068, 1069]
-             1064, 1065, 1066, 1067, 1068, 1069, 1070, 1071, 1072, 1073,
-         // [1070]
-             1074
-        },
 
-        // === Temperature Calibration ===
-        350 , // start
-        700 , // end
-        // int table[ 70 ];
-        {
-         // [350, 355, 360, 365, 370, 375, 380, 385, 390, 395]
-             365, 370, 375, 380, 385, 390, 395, 400, 405, 410,
-         // [400, 405, 410, 415, 420, 425, 430, 435, 440, 445]
-             415, 420, 425, 430, 435, 440, 445, 450, 455, 460,
-         // [450, 455, 460, 465, 470, 475, 480, 485, 490, 495]
-             465, 470, 475, 480, 485, 490, 495, 500, 505, 510,
-         // [500, 505, 510, 515, 520, 525, 530, 535, 540, 545]
-             515, 520, 525, 530, 535, 540, 545, 550, 555, 560,
-         // [550, 555, 560, 565, 570, 575, 580, 585, 590, 595]
-             565, 570, 575, 580, 585, 590, 595, 600, 605, 610,
-         // [600, 605, 610, 615, 620, 625, 630, 635, 640, 645]
-             615, 620, 625, 630, 635, 640, 645, 650, 655, 660,
-         // [650, 655, 660, 665, 670, 675, 680, 685, 690, 695]
-             665, 670, 675, 680, 685, 690, 695, 700, 705, 710,
-         // [700]
-             715
-        },
-
-        INVALID_TEMPERATURE, INVALID_GRAVITY, 0, FALSE
+// ===  ORANGE TILT ===
+// temperature strategy:  CALIBRATION_STRATEGY_TABLE
+// gravity strategy:  CALIBRATION_STRATEGY_OFFSET
+Tilt tilt_orange = { "orange", 0x50, 22, CALIBRATION_STRATEGY_TABLE, CALIBRATION_STRATEGY_OFFSET }; // name, color, blynk, temp, gravity
+unsigned short tilt_orange_temperature_calibration_table[71] = {
+ // [350, 355, 360, 365, 370, 375, 380, 385, 390, 395]
+     364, 369, 374, 379, 384, 389, 394, 399, 405, 410,
+ // [400, 405, 410, 415, 420, 425, 430, 435, 440, 445]
+     415, 420, 425, 430, 435, 440, 445, 450, 455, 461,
+ // [450, 455, 460, 465, 470, 475, 480, 485, 490, 495]
+     466, 471, 476, 481, 486, 491, 496, 501, 506, 511,
+ // [500, 505, 510, 515, 520, 525, 530, 535, 540, 545]
+     517, 522, 527, 532, 537, 542, 547, 552, 557, 562,
+ // [550, 555, 560, 565, 570, 575, 580, 585, 590, 595]
+     568, 573, 578, 583, 588, 593, 598, 603, 608, 613,
+ // [600, 605, 610, 615, 620, 625, 630, 635, 640, 645]
+     618, 624, 629, 634, 639, 644, 649, 654, 659, 664,
+ // [650, 655, 660, 665, 670, 675, 680, 685, 690, 695]
+     669, 675, 680, 685, 690, 695, 700, 705, 710, 715,
+ // [700]
+     720
 };
 
 const byte THERMISTOR_COUNT = 1;
@@ -287,6 +240,8 @@ unsigned long int update_pids_next_time = 0;
 const int update_pids_delay = 1000;
 unsigned long int check_memory_next_time = 0;
 const int check_memory_delay = 5000;
+unsigned long int check_tilt_next_time = 0;
+const int check_tilt_delay = 5000;
 
 // one second
 const int update_display_delay = 1000;
@@ -315,6 +270,17 @@ void setup() {
     WebPowerSwitch_Request.ip = WebPowerSwitch_IPAddress;
     WebPowerSwitch_Request.port = WebPowerSwitch_Port;
 
+    tilt_purple.temperature_calibration_offset = -15;
+    tilt_purple.gravity_calibration_start = 1000;
+    tilt_purple.gravity_calibration_end = 1100;
+    tilt_purple.gravity_calibration_step = 1;
+    tilt_purple.gravity_calibration_table = tilt_purple_gravity_calibration_table;
+    tilt_orange.temperature_calibration_start = 350;
+    tilt_orange.temperature_calibration_end = 700;
+    tilt_orange.temperature_calibration_step = 5;
+    tilt_orange.temperature_calibration_table = tilt_orange_temperature_calibration_table;
+    tilt_orange.gravity_calibration_offset = 2;
+    
     Log.info("Turning everything off");
     all_off();
     run_controls();
@@ -341,8 +307,9 @@ void setup() {
     Blynk.begin(BLYNK_KEY);
 
     Log.info("setting up ble scanner");
-    ble_scanner_setup();
+    ble_scanner_setup(&tilt_callback, &LogBle);
 
+    Log.info("Setting up display");
     // initialize with the I2C addr 0x3C (for the diy display)
     display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
 
@@ -350,7 +317,6 @@ void setup() {
     display.display();
     delay(500);
 
-    Log.info("Setting up display");
     // Clear the buffer.
     display.clearDisplay();
 
@@ -362,6 +328,7 @@ void setup() {
     snprintf(buffer, sizeof(buffer), "Ready %s", (const char*)APP_VERSION);
     display.print(buffer);
     display.display();
+    Log.info("Ready.");
 }
 
 bool rescanOWN = FALSE;
@@ -405,6 +372,17 @@ void loop()
     if ( chiller_check_heater_status && millis() > chiller_check_heater_next_time )
     {
         chiller_check_heater();
+    }
+    if ( millis() > check_tilt_next_time )
+    {
+        // if both temp and gravity are not invalid and the last valid read was a while ago
+        if ( ( tilt_purple.tempF != INVALID_TEMPERATURE && tilt_purple.gravity != INVALID_GRAVITY )
+            && tilt_purple.present == TRUE
+            && ( ( tilt_purple.last_valid_read + TILT_GRACE_PERIOD ) < millis() ) )
+        {
+            if ( tilt_purple.tempF != 
+            tilt_purple.
+        check_tilt_next_time += check_tilt_delay;
     }
     if ( ( chiller.fan.state == TRUE || chiller.fan.timer_last == 0 ) && chiller_fan_off_time > 0 && millis() > chiller_fan_off_time )
     {
@@ -586,6 +564,17 @@ void update_blynk()
     Blynk.virtualWrite(chiller.fan.blynkPin, ( chiller.fan.state ? 255 : 0 ));
     Blynk.virtualWrite(fermenters[F_FERMENTER_1].control->actuator.blynkPin, ( fermenters[F_FERMENTER_1].control->actuator.state ? 255 : 0 ));
     Blynk.virtualWrite(fermenters[F_FERMENTER_2].control->actuator.blynkPin, ( fermenters[F_FERMENTER_2].control->actuator.state ? 255 : 0 ));
+    
+    // send gravity
+    if ( tilt_purple.blynkPin >= 0 && tilt_purple.gravity != INVALID_GRAVITY )
+    {
+        Blynk.virtualWrite(tilt_purple.blynkPin, tilt_purple.gravity - 1000);
+    }
+    if ( tilt_orange.blynkPin >= 0 && tilt_orange.gravity != INVALID_GRAVITY )
+    {
+        Blynk.virtualWrite(tilt_orange.blynkPin, tilt_orange.gravity - 1000);
+    }
+    
 }
 
 void tempF_for_display(float tempF, char *buffer, byte buffer_size)

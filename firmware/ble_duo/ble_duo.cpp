@@ -2,6 +2,10 @@
 #include "Particle.h"
 #include "ble_duo.h"
 
+ble_report_callback_t ble_report_callback;
+Logger *bleLogger;
+
+
 /**
  * @brief Callback for scanning device.
  *
@@ -15,7 +19,6 @@
  *     - (0x04)BLE_GAP_ADV_TYPE_SCAN_RSP         : Scan response.
  */
 void reportCallback(advertisementReport_t *report) {
-  uint8_t index;
 
   // Addresses
   // Orange: 80 101 131 109 168 63
@@ -33,99 +36,69 @@ void reportCallback(advertisementReport_t *report) {
     pink   = 'a495bb80c5b14b44b5121370f02d74de'
 */
 
-  if ( report->advEventType == 0
-        && report->peerAddr[0] == 80
-        && report->peerAddr[1] == 101
-        && report->peerAddr[2] == 131
-        && report->peerAddr[3] == 109
-        && ( report->advData[9] == 80
-            || report->advData[9] == 64
-            )
-        )
-  {
-    Serial.println();
-    Serial.println("reportCallback: =====");
-    Serial.print("The advEventType: ");
-    Serial.println(report->advEventType, HEX);
-    Serial.print("The peerAddrType: ");
-    Serial.println(report->peerAddrType, HEX);
-
-    Serial.print("The peerAddr: ");
-    for (index = 0; index < 6; index++) {
-      Serial.print(report->peerAddr[index]);
-      Serial.print(" ");
-    }
-    Serial.println(" ");
-
-    Serial.print("The rssi: ");
-    Serial.println(report->rssi, DEC);
-
-    // get tilt indicator
-    index = 9;
-    Serial.print(index);
-    Serial.print(": ");
-    Serial.print(report->advData[index], HEX);
-    Serial.print(" (");
-    Serial.print(report->advData[index]);
-    Serial.println(")");
-
-    for (index = 22; index < report->advDataLen; index++) {
-      Serial.print(index);
-      Serial.print(": ");
-      Serial.print(report->advData[index], HEX);
-      Serial.print(" (");
-      Serial.print(report->advData[index]);
-      Serial.println(")");
-    }
-    Serial.println(" ");
-
-    uint16_t tempF = ( report->advData[22] << 8 ) + report->advData[23];
-    uint16_t gravity = ( report->advData[24] << 8 ) + report->advData[25];
-
-    if ( report->advData[9] == 80 ) // Orange: 0x50
+    if ( report->advEventType == 0 )
     {
-        Serial.println("Tilt: Orange");
-    }
-    else if ( report->advData[9] == 64 ) // Purple: 0x40
-    {
-        Serial.println("Tilt: Purple");
-    }
-    else
-    {
-        Serial.println("Tilt: unknown");
-    }
+        bleLogger->info("Callback from %#04X %#04X %#04X %#04X %#04X %#04X (%#04X) at %d",
+                    report->peerAddr[0], report->peerAddr[1], report->peerAddr[2],
+                    report->peerAddr[3], report->peerAddr[4], report->peerAddr[5],
+                    report->peerAddrType, report->rssi);
 
-    Serial.print("Temp: ");
-    Serial.println(tempF);
+        // look for Tilt UUID
+        if ( report->advData[6] == 0xA4
+                && report->advData[7] == 0x95
+                && report->advData[8] == 0xBB
+                && report->advData[10] == 0xC5
+                && report->advData[11] == 0xB1
+                && report->advData[12] == 0x4B
+                && report->advData[13] == 0x44
+                && report->advData[14] == 0xB5
+                && report->advData[15] == 0x12
+                && report->advData[16] == 0x13
+                && report->advData[17] == 0x70
+                && report->advData[18] == 0xF0
+                && report->advData[19] == 0x2D
+                && report->advData[20] == 0x74
+                && report->advData[21] == 0xDE
+           )
+        {
+            if ( report->advData[9] == 0x50 ) // Orange: 0x50
+            {
+                bleLogger->info("Tilt: Orange");
+            }
+            else if ( report->advData[9] == 0x40 ) // Purple: 0x40
+            {
+                bleLogger->info("Tilt: Purple");
+            }
+            else
+            {
+                bleLogger->warn("Tilt: unknown (%#04X)", report->advData[9]);
+            }
+            bleLogger->trace(" Raw data: %#04X %#04X %#04X %#04X", report->advData[22], report->advData[23],
+                         report->advData[24], report->advData[25]);
 
-    Serial.print("Gravity: ");
-    Serial.println(gravity);
+            short tempF = ( report->advData[22] << 8 ) + report->advData[23];
+            short gravity = ( report->advData[24] << 8 ) + report->advData[25];
+            bleLogger->info("Temp: %d ; Gravity: %d", tempF, gravity);
 
-    Serial.println("=====");
-  }
+            ble_report_callback(report->advData[9], tempF, gravity);
+        }
+    }
 }
 
-/**
- * @brief Setup.
- */
-void ble_scanner_setup()
+void ble_scanner_setup(ble_report_callback_t callback, Logger *logger)
 {
-  // Open debugger, must befor init().
-  //ble.debugLogger(true);
-  //ble.debugError(true);
-  //ble.enablePacketLogger();
+    ble_report_callback = callback;
+    bleLogger = logger;
+    bleLogger->info("Setting up BLE Central scanner!");
+    // Initialize ble_stack.
+    ble.init();
 
-  Serial.println("Setting up BLE Central scanner!");
-  // Initialize ble_stack.
-  ble.init();
+    // Register callback functions.
+    ble.onScanReportCallback(reportCallback);
 
-  // Register callback functions.
-  ble.onScanReportCallback(reportCallback);
+    // Set scan parameters.
+    ble.setScanParams(BLE_SCAN_TYPE, BLE_SCAN_INTERVAL, BLE_SCAN_WINDOW);
 
-  // Set scan parameters.
-  ble.setScanParams(BLE_SCAN_TYPE, BLE_SCAN_INTERVAL, BLE_SCAN_WINDOW);
-
-  // Start scanning.
-  ble.startScanning();
-  Serial.println("Start scanning ");
+    // Start scanning.
+    ble.startScanning();
 }

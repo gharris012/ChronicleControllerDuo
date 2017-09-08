@@ -3,7 +3,7 @@
 
 #define APP_VERSION "b2.0"
 
-// A/C Thermostat Heater pin
+// One-wire network pin
 #define OWNPIN D6
 #define LCDLINELENGTH 10
 #define LCDLINEHEIGHT 16
@@ -18,9 +18,15 @@
 #define MENU_AUTO AUTO_MODE_AUTO     // Dumb auto : setpoint, threshold min/max
 #define CONTROL_HIGH_DIFFERENTIAL 10 // error > DIFFERENTIAL -> high differential
 #define BUTTON_COUNT 6
+#define INVALID_TEMPERATURE -123.0
+#define INVALID_GRAVITY -123
+#define INVALID_READING -123
+
+#define CALIBRATION_STRATEGY_NONE 0
+#define CALIBRATION_STRATEGY_OFFSET 1
+#define CALIBRATION_STRATEGY_TABLE 2
 
 #include "Particle.h"
-#include "application.h"
 #include <math.h>
 #include "Button/Button.h"
 #include "Adafruit_SSD1306/Adafruit_GFX.h"
@@ -31,6 +37,7 @@
 #include "HttpClient/HttpClient.h"
 #include <Blynk/blynk.h>
 #include "ble_duo/ble_duo.h"
+#include "tilt/tilt.h"
 
 typedef struct DSTempSensor
 {
@@ -45,29 +52,6 @@ typedef struct DSTempSensor
     int last_valid_read;
     bool present;
 } DSTempSensor;
-
-typedef struct Tilt
-{
-    char name[10];
-    uint8_t color_id;
-    uint8_t blynkPin;
-
-    float tempF;
-    int gravity; // 1010 -> 1.010
-
-    int temperature_calibration_start;
-    int temperature_calibration_end;
-    int temperature_calibration[71];
-
-    int gravity_calibration_start;
-    int gravity_calibration_end;
-    int gravity_calibration[71];
-
-    float last_tempF;
-    float last_gravity;
-    int last_valid_read;
-    bool present;
-} Tilt;
 
 typedef struct Thermistor
 {
@@ -200,12 +184,13 @@ void update_aio();
 void update_blynk();
 void check_memory();
 
+void tilt_callback(short color_id, short temperature, short gravity);
+
 void mode_for_display(bool state, char *buffer, byte buffer_size);
 void mode_for_display(bool state, float tempF, char *buffer, byte buffer_size);
 void mode_for_display(byte mode, float tempF, char *buffer, byte buffer_size);
 void mode_as_string(byte mode, char *buffer, byte buffer_size);
 void tempF_for_display(float tempF, char buffer[], byte buffer_size);
-
 
 void ppublish(String message);
 void ppublish(String message, int value);
