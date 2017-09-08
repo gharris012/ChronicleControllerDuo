@@ -38,18 +38,30 @@ v4.0
   save configuration to eeprom
 
 == [ Blynk Pinouts ] ==
-V12 Fan
+V0 All Off Button
+V4 Heater Temp
+V9 Ambient Temp
+V10 Chill Temp
+V11 Chill Target
+V12 Fan State
+V13 Chill Mode
 
 -- F1
-V7 Target
+V1 Current Temp
+V5 Mode
+V7 Target Temp
 V14 PID %
 V16 Error
-V1 Current
 V18 Pump State
+V20 Gravity
+V22 Orange Gravity
 
 -- F2
-V8 Target
+V2 Current Temp
+V6 Mode
+V8 Target Temp
 V15 PID
 V17 Error
-V2 Current
 V19 Pump State
+V21 Gravity
+V23 Purple Gravity
