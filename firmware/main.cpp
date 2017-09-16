@@ -269,7 +269,6 @@ void setup() {
     mcp.pinMode(control_Heater.actuator.pin, OUTPUT);
     mcp.digitalWrite(control_Heater.actuator.pin, LOW);
     pinMode(control_Heater.thermistor->pin, INPUT);
-    pinMode(OWNPIN, INPUT);
 
     WebPowerSwitch_Request.ip = WebPowerSwitch_IPAddress;
     WebPowerSwitch_Request.port = WebPowerSwitch_Port;
