@@ -29,27 +29,32 @@ typedef struct Tilt
     short temperature_calibration_start = 0;
     short temperature_calibration_end = 0;
     byte temperature_calibration_step = 0;
-    short *temperature_calibration_table;
+    unsigned short *temperature_calibration_table;
 
     byte gravity_calibration_strategy = CALIBRATION_STRATEGY_NONE;
     short gravity_calibration_offset = 0;
     short gravity_calibration_start = 0;
     short gravity_calibration_end = 0;
     short gravity_calibration_step = 0;
-    short *gravity_calibration_table;
+    unsigned short *gravity_calibration_table;
 
     float last_tempF = INVALID_TEMPERATURE;
     float last_gravity = INVALID_GRAVITY;
-    int last_valid_read = 0;
+    unsigned long int last_valid_read = 0;
     bool present = FALSE;
 
-    Tilt(const char *n, short c, byte ts, byte gs) : name(n), color_id(c), temperature_calibration_strategy(ts), gravity_calibration_strategy(gs) 
+    Logger *logger;
+
+    Tilt(const char *n, short c, byte ts, byte gs) : name(n), color_id(c), temperature_calibration_strategy(ts), gravity_calibration_strategy(gs) {};
     Tilt(const char *n, short c, byte b, byte ts, byte gs) : name(n), color_id(c), blynkPin(b), temperature_calibration_strategy(ts), gravity_calibration_strategy(gs) {};
+    Tilt(const char *n, short c, byte b, byte ts, byte gs, Logger *logger) : name(n), color_id(c), blynkPin(b), temperature_calibration_strategy(ts), gravity_calibration_strategy(gs), logger(logger) {};
 
     void setTemperature(short);
     void setGravity(short);
 
-    short tableLookup(short*, short, short, short, short);
+    void checkConnection();
+
+    short tableLookup(unsigned short*, short, short, short, short);
 } Tilt;
 
 #endif

@@ -1,4 +1,5 @@
 // == [ includes ] ==
+#include <stdarg.h>
 #include "Particle.h"
 #include "config.h"
 #include "keys.h"
@@ -30,6 +31,7 @@ const char WebPowerSwitch_BaseUrl[] = "/outlet?";
 
 SerialLogHandler logHandler(LOG_LEVEL_WARN, {
     { "app", LOG_LEVEL_INFO },
+    { "app.own", LOG_LEVEL_TRACE },
     { "app.control.chiller", LOG_LEVEL_TRACE },
     { "app.control.actuator", LOG_LEVEL_TRACE },
     { "app.control.pid", LOG_LEVEL_TRACE },
@@ -40,6 +42,7 @@ SerialLogHandler logHandler(LOG_LEVEL_WARN, {
 Logger LogChiller("app.control.chiller");
 Logger LogActuator("app.control.actuator");
 Logger LogPID("app.control.pid");
+Logger LogOWN("app.own");
 Logger LogBle("app.ble");
 Logger LogTilt("app.sensor.tilt");
 
@@ -84,7 +87,7 @@ DSTempSensor ds_temp_sensor[DS_SENSOR_COUNT] = {
 // ===  PURPLE TILT ===
 // temperature strategy:  CALIBRATION_STRATEGY_OFFSET
 // gravity strategy:  CALIBRATION_STRATEGY_TABLE
-Tilt tilt_purple = { "purple", 0x40, 23, CALIBRATION_STRATEGY_OFFSET, CALIBRATION_STRATEGY_TABLE }; // name, color, blynk, temp, gravity
+Tilt tilt_purple = { "purple", 0x40, 23, CALIBRATION_STRATEGY_OFFSET, CALIBRATION_STRATEGY_TABLE, &LogTilt }; // name, color, blynk, temp, gravity
 unsigned short tilt_purple_gravity_calibration_table[101] = {
  // [1000, 1001, 1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009]
      1002, 1003, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011,
@@ -114,7 +117,7 @@ unsigned short tilt_purple_gravity_calibration_table[101] = {
 // ===  ORANGE TILT ===
 // temperature strategy:  CALIBRATION_STRATEGY_TABLE
 // gravity strategy:  CALIBRATION_STRATEGY_OFFSET
-Tilt tilt_orange = { "orange", 0x50, 22, CALIBRATION_STRATEGY_TABLE, CALIBRATION_STRATEGY_OFFSET }; // name, color, blynk, temp, gravity
+Tilt tilt_orange = { "orange", 0x50, 22, CALIBRATION_STRATEGY_TABLE, CALIBRATION_STRATEGY_OFFSET, &LogTilt }; // name, color, blynk, temp, gravity
 unsigned short tilt_orange_temperature_calibration_table[71] = {
  // [350, 355, 360, 365, 370, 375, 380, 385, 390, 395]
      364, 369, 374, 379, 384, 389, 394, 399, 405, 410,
@@ -266,6 +269,7 @@ void setup() {
     mcp.pinMode(control_Heater.actuator.pin, OUTPUT);
     mcp.digitalWrite(control_Heater.actuator.pin, LOW);
     pinMode(control_Heater.thermistor->pin, INPUT);
+    pinMode(OWNPIN, INPUT);
 
     WebPowerSwitch_Request.ip = WebPowerSwitch_IPAddress;
     WebPowerSwitch_Request.port = WebPowerSwitch_Port;
@@ -280,7 +284,7 @@ void setup() {
     tilt_orange.temperature_calibration_step = 5;
     tilt_orange.temperature_calibration_table = tilt_orange_temperature_calibration_table;
     tilt_orange.gravity_calibration_offset = 2;
-    
+
     Log.info("Turning everything off");
     all_off();
     run_controls();
@@ -375,13 +379,8 @@ void loop()
     }
     if ( millis() > check_tilt_next_time )
     {
-        // if both temp and gravity are not invalid and the last valid read was a while ago
-        if ( ( tilt_purple.tempF != INVALID_TEMPERATURE && tilt_purple.gravity != INVALID_GRAVITY )
-            && tilt_purple.present == TRUE
-            && ( ( tilt_purple.last_valid_read + TILT_GRACE_PERIOD ) < millis() ) )
-        {
-            if ( tilt_purple.tempF != 
-            tilt_purple.
+        tilt_purple.checkConnection();
+        tilt_orange.checkConnection();
         check_tilt_next_time += check_tilt_delay;
     }
     if ( ( chiller.fan.state == TRUE || chiller.fan.timer_last == 0 ) && chiller_fan_off_time > 0 && millis() > chiller_fan_off_time )
@@ -564,7 +563,7 @@ void update_blynk()
     Blynk.virtualWrite(chiller.fan.blynkPin, ( chiller.fan.state ? 255 : 0 ));
     Blynk.virtualWrite(fermenters[F_FERMENTER_1].control->actuator.blynkPin, ( fermenters[F_FERMENTER_1].control->actuator.state ? 255 : 0 ));
     Blynk.virtualWrite(fermenters[F_FERMENTER_2].control->actuator.blynkPin, ( fermenters[F_FERMENTER_2].control->actuator.state ? 255 : 0 ));
-    
+
     // send gravity
     if ( tilt_purple.blynkPin >= 0 && tilt_purple.gravity != INVALID_GRAVITY )
     {
@@ -574,7 +573,7 @@ void update_blynk()
     {
         Blynk.virtualWrite(tilt_orange.blynkPin, tilt_orange.gravity - 1000);
     }
-    
+
 }
 
 void tempF_for_display(float tempF, char *buffer, byte buffer_size)
@@ -669,14 +668,14 @@ void scanOWN()
         ds_temp_sensor[i].present = FALSE;
     }
 
-    Log.info("Searching OWN");
+    LogOWN.info("Searching OWN");
     if ( own.reset() == 1 )
     {
-        Log.info("Network present");
+        LogOWN.info("Network present");
     }
     else
     {
-        Log.info("Network problem :(");
+        LogOWN.info("Network problem :(");
     }
 
     own.reset_search();
@@ -684,12 +683,12 @@ void scanOWN()
     // search own for sensors
     while(own.search(addr))
     {
-        Log.info("Found: %02X-%02X", addr[6], addr[7]);
+        LogOWN.info("Found: %02X-%02X", addr[6], addr[7]);
         for ( i = 0 ; i < DS_SENSOR_COUNT ; i ++ )
         {
             if ( memcmp(addr, ds_temp_sensor[i].addr, 8) == 0 )
             {
-                Log.trace(" %s at index %d", ds_temp_sensor[i].name, i);
+                LogOWN.trace(" %s at index %d", ds_temp_sensor[i].name, i);
                 ppublish("Found sensor %s at %d", ds_temp_sensor[i].name, i);
                 ds_temp_sensor[i].present = TRUE;
             }
@@ -1203,6 +1202,21 @@ void all_off()
     update_chiller();
 }
 
+void tilt_callback(short color_id, short temperature, short gravity)
+{
+    LogTilt.info("Tilt: %#04X => temp: %d ; gravity: %d", color_id, temperature, gravity);
+    if ( color_id == tilt_purple.color_id )
+    {
+        tilt_purple.setTemperature(temperature);
+        tilt_purple.setGravity(gravity);
+    }
+    else if ( color_id == tilt_orange.color_id )
+    {
+        tilt_orange.setTemperature(temperature);
+        tilt_orange.setGravity(gravity);
+    }
+}
+
 void read_temperatures()
 {
     Log.trace("Refreshing temperatures");
@@ -1227,7 +1241,7 @@ void read_temperatures()
 
 void read_ds_temperatures()
 {
-    Log.trace("Reading ds temperatures");
+    LogOWN.trace("Reading ds temperatures");
 
     byte i = 0;
     byte present_count = 0;
@@ -1266,7 +1280,7 @@ void read_ds_temperatures()
                     && ( ds_temp_sensor[i].last_valid_read + DS_TEMP_GRACE_PERIOD ) < millis() )
             {
                 ds_temp_sensor[i].tempF = INVALID_TEMPERATURE;
-                Log.warn(" %s in invalid for too long", ds_temp_sensor[i].name);
+                LogOWN.warn(" %s in invalid for too long", ds_temp_sensor[i].name);
                 ppublish(" %s in invalid for too long", ds_temp_sensor[i].name);
             }
         }
@@ -1274,7 +1288,7 @@ void read_ds_temperatures()
     // if there are none found, don't keep hammering the network
     if ( present_count == 0 )
     {
-        Log.warn("No DS Temperatures Present!");
+        LogOWN.warn("No DS Temperatures Present!");
         ppublish("No DS Temperatures Present!");
         ds_temp_sensor_is_converting = FALSE;
     }
@@ -1343,10 +1357,6 @@ float readTempC(DSTempSensor *dstemp)
     }
 
     uint8_t crc = OneWire::crc8(data, 8);
-    if ( crc != data[8] ) {
-        Log.warn(" invalid crc: %d != %d", crc, data[8]);
-        return INVALID_TEMPERATURE;
-    }
 
     raw = (data[1] << 8) | data[0];
 
@@ -1365,11 +1375,16 @@ float readTempC(DSTempSensor *dstemp)
          raw = raw & ~1; // 11 bit res, 375 ms
     }
 
-    //Log.trace(" %s => data[0]: %d ; data[1]: %d => raw: %d", dstemp->name, data[0], data[1], raw);
+    LogOWN.trace(" %s => data[0]: %d ; data[1]: %d => raw: %d", dstemp->name, data[0], data[1], raw);
 
     celsius = (float)raw / 16.0;
 
-    //Log.trace(" %s => tempC: %f", dstemp->name, celsius);
+    LogOWN.trace(" %s => tempC: %f", dstemp->name, celsius);
+
+    if ( crc != data[8] ) {
+        LogOWN.warn(" invalid crc: %d != %d", crc, data[8]);
+        return INVALID_TEMPERATURE;
+    }
 
     return celsius;
 }
@@ -1553,45 +1568,13 @@ BLYNK_WRITE(V13)
     update_chiller();
 }
 
-void ppublish(String message) {
-    char msg [50];
-    sprintf(msg, message.c_str());
-    Particle.publish("chronicle", msg);
-    //Serial.println(message);
-}
-void ppublish(String message, int value) {
-    char msg [50];
-    sprintf(msg, message.c_str(), value);
-    ppublish(msg);
-}
-void ppublish(String message, float value) {
-    char msg [50];
-    sprintf(msg, message.c_str(), value);
-    ppublish(msg);
-}
-void ppublish(String message, const char *value) {
-    char msg [50];
-    sprintf(msg, message.c_str(), value);
-    ppublish(msg);
-}
-void ppublish(String message, int value, unsigned long int value2)
+void ppublish(String message, ...)
 {
-    char msg [50];
-    sprintf(msg, message.c_str(), value, value2);
-    ppublish(msg);
-}
-void ppublish(String message, const char *value, int value2) {
-    char msg [50];
-    sprintf(msg, message.c_str(), value, value2);
-    ppublish(msg);
-}
-void ppublish(String message, int value, int value2, int value3) {
-    char msg [50];
-    sprintf(msg, message.c_str(), value, value2, value3);
-    ppublish(msg);
-}
-void ppublish(String message, const char *value, const char *value2) {
-    char msg [50];
-    sprintf(msg, message.c_str(), value, value2);
-    ppublish(msg);
+    char buffer[50];
+    va_list args;
+    va_start(args, message);
+    vsnprintf(buffer, 50, message.c_str(), args);
+    Particle.publish("duo", buffer);
+
+    va_end(args);
 }
