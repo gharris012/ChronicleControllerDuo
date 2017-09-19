@@ -53,8 +53,9 @@ V7 Target Temp
 V14 PID %
 V16 Error
 V18 Pump State
-V20 Gravity
-V22 Orange Gravity
+V22 Orange Gravity (x.xxx)
+V24 Orange Graph Gravity (xxxx)
+V26 Orange Temp
 
 -- F2
 V2 Current Temp
@@ -63,5 +64,6 @@ V8 Target Temp
 V15 PID
 V17 Error
 V19 Pump State
-V21 Gravity
-V23 Purple Gravity
+V23 Purple Gravity (x.xxx)
+V25 Purple Graph Gravity (xxxx)
+V27 Purple Temp

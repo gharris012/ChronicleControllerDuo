@@ -30,7 +30,7 @@ void Tilt::setTemperature(short t)
                 last_tempF = tempF;
             }
             // convert calibrated (int) to tempF (float)
-            tempF = calibrated / 10.0;
+            tempF = calibrated / 1.0;
 
             last_valid_read = millis();
             present = TRUE;

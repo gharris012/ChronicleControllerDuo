@@ -19,7 +19,9 @@ typedef struct Tilt
 {
     const char *name;
     const short color_id;
-    byte blynkPin = -1;
+    byte blynkGravityPin = -1;
+    byte blynkGravityGraphPin = -1;
+    byte blynkTempPin = -1;
 
     float tempF = INVALID_READING;
     short gravity = INVALID_READING; // 1010 -> 1.010
@@ -46,8 +48,8 @@ typedef struct Tilt
     Logger *logger;
 
     Tilt(const char *n, short c, byte ts, byte gs) : name(n), color_id(c), temperature_calibration_strategy(ts), gravity_calibration_strategy(gs) {};
-    Tilt(const char *n, short c, byte b, byte ts, byte gs) : name(n), color_id(c), blynkPin(b), temperature_calibration_strategy(ts), gravity_calibration_strategy(gs) {};
-    Tilt(const char *n, short c, byte b, byte ts, byte gs, Logger *logger) : name(n), color_id(c), blynkPin(b), temperature_calibration_strategy(ts), gravity_calibration_strategy(gs), logger(logger) {};
+    Tilt(const char *n, short c, byte bg, byte bgg, byte bt, byte ts, byte gs) : name(n), color_id(c), blynkGravityPin(bg), blynkGravityGraphPin(bgg), blynkTempPin(bt), temperature_calibration_strategy(ts), gravity_calibration_strategy(gs) {};
+    Tilt(const char *n, short c, byte bg, byte bgg, byte bt, byte ts, byte gs, Logger *logger) : name(n), color_id(c), blynkGravityPin(bg), blynkGravityGraphPin(bgg), blynkTempPin(bt), temperature_calibration_strategy(ts), gravity_calibration_strategy(gs), logger(logger) {};
 
     void setTemperature(short);
     void setGravity(short);
